@@ -59,7 +59,7 @@ def run_sql_from_file(filename):
                         cursor = conn.cursor()
                         cursor.execute(query)
                         rows = cursor.fetchall()
-                        with open(f'query_results_sql_{i}.csv', 'w', newline='') as csvfile:
+                        with open(f'query_results/query_results_sql_{i}.csv', 'w', newline='') as csvfile:
                             writer = csv.writer(csvfile)
                             writer.writerow([i[0] for i in cursor.description])
                             writer.writerows(rows)
