@@ -52,7 +52,7 @@ These tasks gave me a clean, end-to-end picture of early SQL workflows: define a
 ---
 
 ## Screenshots attached
-- Screenshots are located under `assets` folder in repo 
-- `Customers` after the multi-row insert.  
-- `Products` after populating the table per the activity steps.
+- Screenshots are located under `assets` folder in repo shows server sucessfully running
 
+## Query Results 
+- You can find all the results from the activities under the `query_results` folder within the repository
