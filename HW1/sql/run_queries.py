@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, text
 import csv
 import re
+from pathlib import Path
 
 DB_HOST = "localhost"
 DB_USER = "root"
@@ -9,7 +10,7 @@ DB_NAME = "PACKT_ONLINE_SHOP"
 
 engine = create_engine(f"mysql+mysqlconnector://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}")
 
-with open('99_verify.sql', 'r') as f:
+with open(Path(__file__).parent / '99_verify.sql', 'r') as f:
     sql_script = f.read()
 
 # Remove comments

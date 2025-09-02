@@ -11,6 +11,7 @@ import csv
 import mysql.connector
 from mysql.connector import Error
 import re
+from pathlib import Path
 
 # --- DATABASE CONNECTION DETAILS ---
 DB_HOST = "localhost"
@@ -86,7 +87,7 @@ def run_sql_from_file(filename):
             print("Database connection closed.")
 
 if __name__ == '__main__':
-    run_sql_from_file('99_verify.sql')
+    run_sql_from_file(Path(__file__).parent / '99_verify.sql')
 
 
 
