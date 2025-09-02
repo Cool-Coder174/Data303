@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# venvs
+.venv/
+venv/
+ENV/
+env/
+HW1/.venv/
+
+# local config/secrets
+.env
+.env.*
