@@ -48,9 +48,9 @@ def split_sql_statements(sql: str):
     prev = ""
     for ch in sql:
         # Are we inside a string? Let's check.
-        if ch == "'" and prev != '"' and not in_double:
+        if ch == "'" and prev != "\\" and not in_double:
             in_single = not in_single
-        elif ch == '"' and prev != '"' and not in_single:
+        elif ch == '"' and prev != "\\" and not in_single:
             in_double = not in_double
 
         # If we're not in a string, a semicolon is a delimiter.
