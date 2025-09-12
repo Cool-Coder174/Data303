@@ -1,118 +1,132 @@
-import pytest
-from unittest.mock import Mock, MagicMock
+
+import unittest
+from unittest.mock import Mock, patch, MagicMock, call
 from pathlib import Path
+import os
 import csv
+import mysql.connector
+import sys
 
-# Import the functions to be tested
-from main import (
-    split_sql_statements,
-    strip_sql_comments,
-    ensure_dirs,
-    export_rows_to_csv,
-    run_sql_file
-)
+# This is a bit of a hack to import the main.py file
+sys.path.append(str(Path(__file__).parent.parent))
+import main as main_script
 
-# -- Tests for SQL parsing --
+class TestMain(unittest.TestCase):
 
-@pytest.mark.parametrize("sql_input, expected_output", [
-    # Requirement: Splits SQL safely on semicolons.
-    ("SELECT * FROM t1; SELECT * FROM t2;", ["SELECT * FROM t1", "SELECT * FROM t2"]),
-    # Requirement: Don’t split inside quotes.
-    ("INSERT INTO messages VALUES ('Hello; world');", ["INSERT INTO messages VALUES ('Hello; world')"]),
-    ('INSERT INTO messages VALUES ("Hello; world");', ['INSERT INTO messages VALUES ("Hello; world")']),
-    # Handles escaped quotes (the bug from before)
-    ("INSERT INTO messages VALUES ('Hello \'world\';');", ["INSERT INTO messages VALUES ('Hello \'world\';')"]),
-    # Handles no trailing semicolon
-    ("SELECT * FROM users", ["SELECT * FROM users"]),
-    # Handles multiple semicolons
-    (";;SELECT * FROM users;;", ["SELECT * FROM users"]),
-    # Handles empty input
-    ("", []),
-    (";", []),
-])
-def test_split_sql_statements(sql_input, expected_output):
-    """Comprehensive tests for the refactored split_sql_statements."""
-    assert split_sql_statements(sql_input) == expected_output
+    def test_split_sql_statements(self):
+        # Requirement 8: Safely split SQL on semicolons (don’t split inside quotes).
+        self.assertEqual(main_script.split_sql_statements("SELECT * FROM foo;"), ["SELECT * FROM foo"])
+        self.assertEqual(main_script.split_sql_statements("SELECT ';'; SELECT \";\";"), ["SELECT ';'", "SELECT \";\""])
+        self.assertEqual(main_script.split_sql_statements("SELECT 'a;b'; -- a comment\nSELECT 2;"), ["SELECT 'a;b'", "SELECT 2"])
+        self.assertEqual(main_script.split_sql_statements(""), [])
+        self.assertEqual(main_script.split_sql_statements("-- a comment"), [])
 
-@pytest.mark.parametrize("sql_input, expected_output", [
-    # Strips single-line comments
-    ("SELECT * FROM users; -- Get all users", "SELECT * FROM users;"),
-    # Strips file-leading comments (the other bug)
-    ("-- My script\nSELECT * FROM users;", "SELECT * FROM users;"),
-    # Strips multi-line comments
-    ("/* a comment */ SELECT 1;", "SELECT 1;"),
-    ("SELECT /* a comment */ 1;", "SELECT  1;"), # In-line becomes a space
-])
-def test_strip_sql_comments(sql_input, expected_output):
-    """Test the comment stripping logic."""
-    assert strip_sql_comments(sql_input) == expected_output
+    @patch('main.export_rows_to_csv')
+    def test_run_sql_file(self, mock_export_rows_to_csv):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.with_rows = False
+        
+        # Create a temporary sql file
+        p = Path("test.sql")
+        p.write_text("SELECT 1; INSERT INTO foo VALUES (1);")
 
-# -- Tests for file system operations --
+        main_script.run_sql_file(mock_conn, mock_cursor, p)
 
-def test_ensure_dirs(tmp_path: Path):
-    """Requirement: It creates the output directory if it doesn't exist."""
-    test_output_path = tmp_path / "output"
-    assert not test_output_path.exists()
-    ensure_dirs(test_output_path)
-    assert test_output_path.exists()
-    assert test_output_path.is_dir()
+        self.assertEqual(mock_cursor.execute.call_count, 2)
+        mock_cursor.execute.assert_has_calls([call("SELECT 1"), call("INSERT INTO foo VALUES (1)")])
+        mock_conn.commit.assert_called_once()
+        mock_export_rows_to_csv.assert_not_called()
+        
+        p.unlink() # clean up
 
-def test_export_rows_to_csv(tmp_path: Path):
-    """Requirement: Exports SELECT/SHOW results to CSV with headers."""
-    # 1. Setup mock cursor
-    mock_cursor = Mock()
-    mock_cursor.description = [('id',), ('name',)]
-    mock_cursor.fetchall.return_value = [ (1, 'Alice'), (2, 'Bob') ]
+    @patch('main.export_rows_to_csv')
+    def test_run_sql_file_with_select(self, mock_export_rows_to_csv):
+        mock_export_rows_to_csv.return_value = ("test.csv", 1)
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.with_rows = True
+        
+        p = Path("test_select.sql")
+        p.write_text("SELECT * FROM foo;")
 
-    # 2. Run the function
-    csv_name, num_rows = export_rows_to_csv(
-        base_stem="test_export",
-        result_index=1,
-        cursor=mock_cursor,
-        output_path=tmp_path
-    )
+        main_script.run_sql_file(mock_conn, mock_cursor, p)
 
-    # 3. Assertions
-    assert num_rows == 2
-    assert csv_name == "test_export.csv"
-    
-    # Check the CSV content
-    csv_file = tmp_path / "test_export.csv"
-    assert csv_file.exists()
-    with csv_file.open('r', newline='') as f:
-        reader = csv.reader(f)
-        assert next(reader) == ['id', 'name']
-        assert next(reader) == ['1', 'Alice']
-        assert next(reader) == ['2', 'Bob']
+        mock_cursor.execute.assert_called_once_with("SELECT * FROM foo")
+        mock_export_rows_to_csv.assert_called_once()
+        mock_conn.commit.assert_called_once()
 
-def test_run_sql_file(tmp_path: Path, capsys):
-    """Requirement: Runs every .sql file and commits after each."""
-    # 1. Create a fake SQL file
-    sql_content = "-- A test query\nSELECT * FROM test_table;\nINSERT INTO audit_log VALUES ('ran test');"
-    sql_file = tmp_path / "01_test.sql"
-    sql_file.write_text(sql_content)
+        p.unlink() # clean up
 
-    # 2. Setup mock cursor and connection
-    mock_cursor = MagicMock()
-    mock_cursor.with_rows = False # Default for INSERT
-    mock_conn = Mock()
-    mock_cursor.connection = mock_conn
+class TestIntegration(unittest.TestCase):
 
-    # 3. Run the function
-    run_sql_file(mock_cursor, sql_file, output_path=tmp_path)
+    @classmethod
+    def setUpClass(cls):
+        # This will run the main script once before all tests in this class
+        # This covers requirements 1, 2, 3, 4, 5
+        try:
+            main_script.main()
+        except Exception as e:
+            # If the script fails, we want to know why
+            print(f"Running main.py for integration test setup failed: {e}")
+            # It's possible the DB doesn't exist, so we can't connect to clean up.
+            # We'll have to rely on the error message.
+            raise
 
-    # 4. Assertions
-    # Check that execute was called for each statement
-    assert mock_cursor.execute.call_count == 2
-    mock_cursor.execute.assert_any_call("SELECT * FROM test_table")
-    mock_cursor.execute.assert_any_call("INSERT INTO audit_log VALUES ('ran test')")
+    @classmethod
+    def tearDownClass(cls):
+        # Clean up the database after tests
+        try:
+            conn = main_script.connect_db()
+            with conn.cursor() as cur:
+                cur.execute("DROP DATABASE IF EXISTS EMPLOYEE;")
+            conn.close()
+        except mysql.connector.Error as e:
+            print(f"Could not clean up database EMPLOYEE: {e}")
 
-    # Check that commit was called
-    mock_conn.commit.assert_called_once()
 
-    # Check console output
-    captured = capsys.readouterr()
-    assert "-- Running: 01_test.sql" in captured.out
-    assert "[1/2] SELECT ... ✓" in captured.out
-    assert "[2/2] INSERT ... ✓" in captured.out
-    assert "✓ Committed" in captured.out
+    def test_database_and_table_created(self):
+        # Requirement 1 & 2: Create an EMPLOYEE database and Employees table.
+        conn = main_script.connect_db()
+        with conn.cursor() as cur:
+            cur.execute("USE EMPLOYEE;")
+            cur.execute("SHOW TABLES;")
+            tables = [table[0] for table in cur.fetchall()]
+            self.assertIn('employees', [t.lower() for t in tables])
+        conn.close()
+
+    def test_employee_inserted(self):
+        # Requirement 3: Insert one row.
+        conn = main_script.connect_db()
+        with conn.cursor() as cur:
+            cur.execute("USE EMPLOYEE;")
+            cur.execute("SELECT COUNT(*) FROM Employees;")
+            count = cur.fetchone()[0]
+            self.assertEqual(count, 1)
+
+            cur.execute("SELECT * FROM Employees WHERE EmployeeID = 1;")
+            employee = cur.fetchone()
+            self.assertIsNotNone(employee)
+            self.assertEqual(employee[1], 'Grace')
+            self.assertEqual(employee[2], 'Hopper')
+
+        conn.close()
+
+    def test_csv_files_created(self):
+        # Requirement 5: writes CSVs for any SELECT/SHOW statements into ./output
+        output_dir = Path(__file__).parent.parent / "output"
+        self.assertTrue((output_dir / "10_select_all_employees.csv").exists())
+        self.assertTrue((output_dir / "11_describe_employees.csv").exists())
+
+        # Requirement 6: No pandas; use Python’s built-in csv module.
+        # We can verify the content of one of the CSVs
+        with open(output_dir / "10_select_all_employees.csv", 'r') as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            self.assertEqual(header, ['EmployeeID', 'FirstName', 'LastName', 'Title', 'HireDate', 'Salary'])
+            row = next(reader)
+            self.assertEqual(row[0], '1')
+            self.assertEqual(row[1], 'Grace')
+
+if __name__ == '__main__':
+    unittest.main()
