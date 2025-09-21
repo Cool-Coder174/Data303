@@ -1,0 +1,68 @@
+Homework 3 Output
+====================
+
+Executing schema.sql...
+schema.sql executed successfully.
+
+Executing inserts.sql...
+inserts.sql executed successfully.
+
+Executing queries.sql...
+Query: USE employeedemo
+No results.
+--------------------
+Query: -- Join employee and department to show employee names with department names
+SELECT
+    e.ename,
+    d.dname
+FROM
+    employee e
+JOIN
+    department d ON e.deptno = d.dno
+('John Doe', 'Finance')
+('Jane Roe', 'HR')
+('Alan S', 'IT')
+('Maria L', 'Marketing')
+--------------------
+Query: -- Count how many employees are in each department
+SELECT
+    d.dname,
+    COUNT(e.eno) AS num_employees
+FROM
+    department d
+LEFT JOIN
+    employee e ON e.deptno = d.dno
+GROUP BY
+    d.dname
+('HR', 1)
+('Finance', 1)
+('IT', 1)
+('Marketing', 1)
+--------------------
+queries.sql executed successfully.
+
+Executing tests.sql...
+Test: USE employeedemo
+No results.
+--------------------
+Test: -- Confirm all 4 departments exist
+SELECT COUNT(*) AS num_departments FROM department
+(4,)
+--------------------
+Test: -- Confirm all 4 employees are inserted correctly
+SELECT COUNT(*) AS num_employees FROM employee
+(4,)
+--------------------
+Test: -- Confirm no employee references an invalid department
+SELECT
+    e.eno,
+    e.ename,
+    e.deptno
+FROM
+    employee e
+WHERE
+    e.deptno NOT IN (SELECT dno FROM department)
+No results.
+--------------------
+tests.sql executed successfully.
+
