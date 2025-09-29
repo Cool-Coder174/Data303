@@ -1,0 +1,7 @@
+test_name,result
+table_exists,1
+row_count,7
+min_id,1
+max_id,7
+distinct_ids,7
+alias_query_runs,1
