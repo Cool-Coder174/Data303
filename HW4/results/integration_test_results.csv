@@ -1,0 +1,4 @@
+test_name,result
+select_row_count,7
+alias_row_count,7
+row_counts_match,1
